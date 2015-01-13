@@ -1,12 +1,13 @@
 
-#![feature(macro_rules, phase, slicing_syntax, if_let)]
+#![feature(macro_rules, phase, slicing_syntax)]
+#![deny(missing_copy_implementations)]
 
 extern crate input;
 extern crate event;
 extern crate freetype;
 extern crate graphics;
 extern crate opengl_graphics;
-extern crate serialize;
+extern crate "rustc-serialize" as rustc_serialize;
 extern crate time;
 extern crate vecmath;
 
@@ -46,10 +47,9 @@ pub mod dimensions;
 pub mod draw;
 pub mod drop_down_list;
 pub mod envelope_editor;
-pub mod error;
 pub mod frame;
 pub mod label;
-pub mod mouse_state;
+pub mod mouse;
 pub mod number_dialer;
 pub mod point;
 pub mod position;

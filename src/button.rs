@@ -2,7 +2,7 @@
 use color::Color;
 use dimensions::Dimensions;
 use opengl_graphics::Gl;
-use mouse_state::MouseState;
+use mouse::Mouse;
 use point::Point;
 use rectangle;
 use ui_context::{
@@ -12,7 +12,7 @@ use ui_context::{
 use widget::Widget;
 
 /// Represents the state of the Button widget.
-#[deriving(PartialEq, Clone)]
+#[deriving(PartialEq, Clone, Copy)]
 pub enum State {
     Normal,
     Highlighted,
@@ -30,13 +30,13 @@ impl State {
     }
 }
 
-widget_fns!(Button, State, Widget::Button(State::Normal))
+widget_fns!(Button, State, Widget::Button(State::Normal));
 
 /// Check the current state of the button.
 fn get_new_state(is_over: bool,
                  prev: State,
-                 mouse: MouseState) -> State {
-    use mouse_state::MouseButtonState::{Down, Up};
+                 mouse: Mouse) -> State {
+    use mouse::ButtonState::{Down, Up};
     use self::State::{Normal, Highlighted, Clicked};
     match (is_over, prev, mouse.left) {
         (true,  Normal,  Down) => Normal,
@@ -88,12 +88,12 @@ impl<'a> ButtonBuilder<'a> for UiContext {
 
 }
 
-impl_callable!(ButtonContext, ||:'a)
-impl_colorable!(ButtonContext)
-impl_frameable!(ButtonContext)
-impl_labelable!(ButtonContext)
-impl_positionable!(ButtonContext)
-impl_shapeable!(ButtonContext)
+impl_callable!(ButtonContext, ||:'a);
+impl_colorable!(ButtonContext);
+impl_frameable!(ButtonContext);
+impl_labelable!(ButtonContext);
+impl_positionable!(ButtonContext);
+impl_shapeable!(ButtonContext);
 
 impl<'a> ::draw::Drawable for ButtonContext<'a> {
     fn draw(&mut self, graphics: &mut Gl) {
@@ -140,4 +140,3 @@ impl<'a> ::draw::Drawable for ButtonContext<'a> {
 
     }
 }
-

@@ -1,11 +1,9 @@
 
 use color::Color;
 use dimensions::Dimensions;
+use graphics;
 use graphics::{
-    AddRectangle,
-    AddColor,
     Context,
-    Draw,
 };
 use label;
 use label::FontSize;
@@ -15,7 +13,7 @@ use ui_context::UiContext;
 use utils::map_range;
 
 /// Represents the state of the Button widget.
-#[deriving(PartialEq, Show)]
+#[deriving(PartialEq, Show, Copy)]
 pub enum State {
     Normal,
     Highlighted,
@@ -51,11 +49,9 @@ fn draw_frame(
     dim: Dimensions,
     color: Color
 ) {
-    let (r, g, b, a) = color.as_tuple();
-    context
-        .rect(pos[0], pos[1], dim[0], dim[1])
-        .rgba(r, g, b, a)
-        .draw(graphics);
+    let Color(col) = color;
+    graphics::Rectangle::new(col)
+        .draw([pos[0], pos[1], dim[0], dim[1]], context, graphics);
 }
 
 /// Draw the rectangle while considering frame
@@ -69,18 +65,18 @@ fn draw_normal(
     frame_width: f64,
     color: Color
 ) {
-    let (r, g, b, a) = match state {
-        State::Normal => color.as_tuple(),
-        State::Highlighted => color.highlighted().as_tuple(),
-        State::Clicked => color.clicked().as_tuple(),
+    let Color(col) = match state {
+        State::Normal => color,
+        State::Highlighted => color.highlighted(),
+        State::Clicked => color.clicked(),
     };
-    context
-        .rect(pos[0] + frame_width,
-              pos[1] + frame_width,
-              dim[0] - frame_width * 2.0,
-              dim[1] - frame_width * 2.0)
-        .rgba(r, g, b, a)
-        .draw(graphics);
+    graphics::Rectangle::new(col)
+        .draw([pos[0] + frame_width,
+            pos[1] + frame_width,
+            dim[0] - frame_width * 2.0,
+            dim[1] - frame_width * 2.0],
+        context,
+        graphics);
 }
 
 /// Return whether or not the widget has been hit by a mouse_press.
@@ -118,9 +114,10 @@ pub fn draw_with_centered_label(
     draw_normal(context, graphics, state, pos, dim, f_width, color);
     let text_w = label::width(uic, font_size, text);
     let l_pos = [pos[0] + (dim[0] - text_w) / 2.0, pos[1] + (dim[1] - font_size as f64) / 2.0];
-    label::draw(graphics, uic, l_pos, font_size, text_color, text);
+    uic.draw_text(graphics, l_pos, font_size, text_color, text);
 }
 
+#[deriving(Copy)]
 pub enum Corner {
     TopLeft,
     TopRight,

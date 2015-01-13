@@ -1,18 +1,15 @@
 use std::num::FloatMath;
 use color::Color;
 use dimensions::Dimensions;
+use graphics;
 use graphics::{
-    AddColor,
-    AddLine,
-    AddRoundBorder,
     Context,
-    Draw,
 };
 use label;
 use label::FontSize;
-use mouse_state::MouseState;
+use mouse::Mouse;
 use opengl_graphics::Gl;
-use input::keyboard::{
+use input::keyboard::Key::{
     Backspace,
     Left,
     Right,
@@ -37,11 +34,11 @@ pub type Idx = uint;
 pub type CursorX = f64;
 
 /// Represents the state of the text_box widget.
-#[deriving(Show, PartialEq, Clone)]
+#[deriving(Show, PartialEq, Clone, Copy)]
 pub struct State(DrawState, Capturing);
 
 /// Represents the next tier of state.
-#[deriving(Show, PartialEq, Clone)]
+#[deriving(Show, PartialEq, Clone,Copy)]
 pub enum DrawState {
     Normal,
     Highlighted(Element),
@@ -49,14 +46,14 @@ pub enum DrawState {
 }
 
 /// Whether the textbox is currently captured or not.
-#[deriving(Show, PartialEq, Clone)]
+#[deriving(Show, PartialEq, Clone, Copy)]
 pub enum Capturing {
     Uncaptured,
     Captured(Idx, CursorX),
 }
 
 /// Represents an element of the TextBox widget.
-#[deriving(Show, PartialEq, Clone)]
+#[deriving(Show, PartialEq, Clone, Copy)]
 pub enum Element {
     Nill,
     Rect,
@@ -79,7 +76,7 @@ impl State {
     }
 }
 
-widget_fns!(TextBox, State, TextBox(State(DrawState::Normal, Capturing::Uncaptured)))
+widget_fns!(TextBox, State, TextBox(State(DrawState::Normal, Capturing::Uncaptured)));
 
 static TEXT_PADDING: f64 = 5f64;
 
@@ -119,7 +116,7 @@ fn closest_idx(uic: &mut UiContext,
     let mut left_x = text_x;
     for (i, ch) in text.chars().enumerate() {
         let character = uic.get_character(font_size, ch);
-        let char_w = (character.glyph.advance().x >> 16) as f64;
+        let char_w = character.width();
         x += char_w;
         let right_x = prev_x + char_w / 2.0;
         if mouse_pos[0] > left_x && mouse_pos[0] < right_x { return (i, prev_x) }
@@ -132,8 +129,8 @@ fn closest_idx(uic: &mut UiContext,
 /// Check and return the current state of the TextBox.
 fn get_new_state(over_elem: Element,
                  prev_box_state: State,
-                 mouse: MouseState) -> State {
-    use mouse_state::MouseButtonState::{Down, Up};
+                 mouse: Mouse) -> State {
+    use mouse::ButtonState::{Down, Up};
     use self::Capturing::{Uncaptured, Captured};
     use self::DrawState::{Normal, Highlighted, Clicked};
     use self::Element::{Nill, Text};
@@ -178,15 +175,10 @@ fn draw_cursor(
     pad_h: f64
 ) {
     let context = Context::abs(win_w, win_h);
-    let (r, g, b, a) = color.plain_contrast().as_tuple();
-    context
-        .line(cursor_x, pad_pos_y, cursor_x, pad_pos_y + pad_h)
-        .round_border_width(1f64)
-        .rgba(r, g, b, (a * (precise_time_s() * 2.5).sin() as f32).abs())
-        .draw(graphics);
+    let Color([r, g, b, a]) = color.plain_contrast();
+    graphics::Line::round([r, g, b, (a * (precise_time_s() * 2.5).sin() as f32).abs()], 0.5f64)
+        .draw([cursor_x, pad_pos_y, cursor_x, pad_pos_y + pad_h], &context, graphics);
 }
-
-
 
 /// A context on which the builder pattern can be implemented.
 pub struct TextBoxContext<'a> {
@@ -232,11 +224,11 @@ impl<'a> TextBoxBuilder<'a> for UiContext {
 }
 
 
-impl_callable!(TextBoxContext, |&mut String|:'a)
-impl_colorable!(TextBoxContext)
-impl_frameable!(TextBoxContext)
-impl_positionable!(TextBoxContext)
-impl_shapeable!(TextBoxContext)
+impl_callable!(TextBoxContext, |&mut String|:'a);
+impl_colorable!(TextBoxContext);
+impl_frameable!(TextBoxContext);
+impl_positionable!(TextBoxContext);
+impl_shapeable!(TextBoxContext);
 
 impl<'a> ::draw::Drawable for TextBoxContext<'a> {
     #[inline]
@@ -265,8 +257,8 @@ impl<'a> ::draw::Drawable for TextBoxContext<'a> {
 
         rectangle::draw(self.uic.win_w, self.uic.win_h, graphics, new_state.as_rectangle_state(),
                         self.pos, self.dim, maybe_frame, color);
-        label::draw(graphics, self.uic, text_pos, self.font_size,
-                    color.plain_contrast(), self.text.as_slice());
+        self.uic.draw_text(graphics, text_pos, self.font_size,
+                           color.plain_contrast(), self.text.as_slice());
 
         let new_state = match new_state { State(w_state, capturing) => match capturing {
             Capturing::Uncaptured => new_state,
@@ -282,7 +274,7 @@ impl<'a> ::draw::Drawable for TextBoxContext<'a> {
                     let mut entered_text_width = 0f64;
                     for ch in t.as_slice().chars() {
                         let c = self.uic.get_character(self.font_size, ch);
-                        entered_text_width += (c.glyph.advance().x >> 16) as f64;
+                        entered_text_width += c.width();
                     }
                     if new_cursor_x + entered_text_width < pad_pos[0] + pad_dim[0] - TEXT_PADDING {
                         new_cursor_x += entered_text_width;
@@ -366,6 +358,3 @@ impl<'a> ::draw::Drawable for TextBoxContext<'a> {
 
     }
 }
-
-
-

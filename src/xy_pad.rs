@@ -1,16 +1,13 @@
 use std::num::Float;
 use color::Color;
 use dimensions::Dimensions;
+use graphics;
 use graphics::{
-    AddColor,
-    AddLine,
-    AddSquareBorder,
     Context,
-    Draw,
 };
 use label;
 use label::FontSize;
-use mouse_state::MouseState;
+use mouse::Mouse;
 use opengl_graphics::Gl;
 use point::Point;
 use rectangle;
@@ -33,7 +30,7 @@ use vecmath::{
 use widget::Widget::XYPad;
 
 /// Represents the state of the xy_pad widget.
-#[deriving(Show, PartialEq, Clone)]
+#[deriving(Show, PartialEq, Clone, Copy)]
 pub enum State {
     Normal,
     Highlighted,
@@ -51,13 +48,13 @@ impl State {
     }
 }
 
-widget_fns!(XYPad, State, XYPad(State::Normal))
+widget_fns!(XYPad, State, XYPad(State::Normal));
 
 /// Check the current state of the button.
 fn get_new_state(is_over: bool,
                  prev: State,
-                 mouse: MouseState) -> State {
-    use mouse_state::MouseButtonState::{Down, Up};
+                 mouse: Mouse) -> State {
+    use mouse::ButtonState::{Down, Up};
     use self::State::{Normal, Highlighted, Clicked};
     match (is_over, prev, mouse.left) {
         (true,  Normal,  Down) => Normal,
@@ -80,17 +77,10 @@ fn draw_crosshair(
     color: Color
 ) {
     let context = &Context::abs(win_w, win_h);
-    let (r, g, b, a) = color.as_tuple();
-    context
-        .line(vert_x, pos[1], vert_x, pos[1] + pad_dim[1])
-        .square_border_width(line_width)
-        .rgba(r, g, b, a)
-        .draw(graphics);
-    context
-        .line(pos[0], hori_y, pos[0] + pad_dim[0], hori_y)
-        .square_border_width(line_width)
-        .rgba(r, g, b, a)
-        .draw(graphics);
+    let Color(col) = color;
+    let line = graphics::Line::new(col, 0.5 * line_width);
+    line.draw([vert_x, pos[1], vert_x, pos[1] + pad_dim[1]], context, graphics);
+    line.draw([pos[0], hori_y, pos[0] + pad_dim[0], hori_y], context, graphics);
 }
 
 
@@ -159,12 +149,12 @@ XYPadBuilder<'a, X, Y> for UiContext {
     }
 }
 
-impl_callable!(XYPadContext, |X, Y|:'a, X, Y)
-impl_colorable!(XYPadContext, X, Y)
-impl_frameable!(XYPadContext, X, Y)
-impl_labelable!(XYPadContext, X, Y)
-impl_positionable!(XYPadContext, X, Y)
-impl_shapeable!(XYPadContext, X, Y)
+impl_callable!(XYPadContext, |X, Y|:'a, X, Y);
+impl_colorable!(XYPadContext, X, Y);
+impl_frameable!(XYPadContext, X, Y);
+impl_labelable!(XYPadContext, X, Y);
+impl_positionable!(XYPadContext, X, Y);
+impl_shapeable!(XYPadContext, X, Y);
 
 impl<'a, X: Float + Copy + ToPrimitive + FromPrimitive + ToString,
          Y: Float + Copy + ToPrimitive + FromPrimitive + ToString>
@@ -235,7 +225,7 @@ impl<'a, X: Float + Copy + ToPrimitive + FromPrimitive + ToString,
             let l_x = pad_pos[0] + (pad_dim[0] - l_w) / 2.0;
             let l_y = pad_pos[1] + (pad_dim[1] - l_size as f64) / 2.0;
             let l_pos = [l_x, l_y];
-            label::draw(graphics, self.uic, l_pos, l_size, l_color, l_text);
+            self.uic.draw_text(graphics, l_pos, l_size, l_color, l_text);
         }
         // xy value string.
         let x_string = val_to_string(self.x, self.max_x,
@@ -252,12 +242,10 @@ impl<'a, X: Float + Copy + ToPrimitive + FromPrimitive + ToString,
                 Corner::BottomRight => [vert_x - xy_string_w, hori_y - self.font_size as f64],
             }
         };
-        label::draw(graphics, self.uic, xy_string_pos, self.font_size,
+        self.uic.draw_text(graphics, xy_string_pos, self.font_size,
                     color.plain_contrast(), xy_string.as_slice());
 
         set_state(self.uic, self.ui_id, new_state, self.pos, self.dim);
 
     }
 }
-
-

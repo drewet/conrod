@@ -2,9 +2,9 @@ use std::num::Float;
 use std::default::Default;
 use std::fmt::{Show, Formatter, Error};
 use std::rand::random;
-use std::ascii::OwnedAsciiExt;
-use serialize::hex::ToHex;
-use serialize::{
+use std::ascii::AsciiExt;
+use rustc_serialize::hex::ToHex;
+use rustc_serialize::{
     Decodable, Encodable,
     Decoder, Encoder,
     DecoderHelpers, EncoderHelpers
@@ -13,6 +13,7 @@ use utils::clampf32;
 
 /// A basic color struct for general color use
 /// made of red, green, blue and alpha elements.
+#[deriving(Copy)]
 pub struct Color(pub [f32, ..4]);
 
 impl Color {
@@ -91,12 +92,6 @@ impl Color {
     /// Return color as a vector.
     pub fn as_vec(&self) -> Vec<f32> {
         vec![self.r(), self.g(), self.b(), self.a()]
-    }
-
-    /// Return color as a tuple.
-    pub fn as_tuple(&self) -> (f32, f32, f32, f32) {
-        let &Color(c) = self;
-        (c[0], c[1], c[2], c[3])
     }
 
     /// Clamp the Color's values between 0f32 and 1f32.
@@ -204,7 +199,7 @@ impl Color {
     pub fn to_hex(&self) -> String {
         let vals = self.to_32_bit();
         // Hex colors are always uppercased
-        let hex = vals.as_slice().to_hex().into_ascii_upper();
+        let hex = vals.as_slice().to_hex().to_ascii_uppercase();
         format!("#{}", hex.as_slice())
     }
 }
@@ -228,7 +223,7 @@ impl Default for Color {
 }
 
 impl Add<Color, Color> for Color {
-    fn add(&self, rhs: &Color) -> Color {
+    fn add(self, rhs: Color) -> Color {
         Color::clamp(
             Color([
                 self.r() + rhs.r(), 
@@ -241,7 +236,7 @@ impl Add<Color, Color> for Color {
 }
 
 impl Sub<Color, Color> for Color {
-    fn sub(&self, rhs: &Color) -> Color {
+    fn sub(self, rhs: Color) -> Color {
         Color::clamp(
             Color([
                 self.r() - rhs.r(), 
@@ -254,7 +249,7 @@ impl Sub<Color, Color> for Color {
 }
 
 impl Div<Color, Color> for Color {
-    fn div(&self, rhs: &Color) -> Color {
+    fn div(self, rhs: Color) -> Color {
         Color::clamp(
             Color([
                 self.r() / rhs.r(), 
@@ -267,7 +262,7 @@ impl Div<Color, Color> for Color {
 }
 
 impl Mul<Color, Color> for Color {
-    fn mul(&self, rhs: &Color) -> Color {
+    fn mul(self, rhs: Color) -> Color {
         Color::clamp(
             Color([
                 self.r() * rhs.r(), 
@@ -314,4 +309,3 @@ pub trait Colorable {
     /// A method used for passing color as rgba.
     fn rgba(self, r: f32, g: f32, b: f32, a: f32) -> Self;
 }
-

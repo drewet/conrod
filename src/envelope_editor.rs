@@ -2,17 +2,13 @@ use std::fmt::Show;
 use std::num::Float;
 use color::Color;
 use dimensions::Dimensions;
+use graphics;
 use graphics::{
-    AddColor,
-    AddEllipse,
-    AddLine,
-    AddRoundBorder,
     Context,
-    Draw,
 };
 use label;
 use label::FontSize;
-use mouse_state::MouseState;
+use mouse::Mouse;
 use opengl_graphics::Gl;
 use point::Point;
 use rectangle;
@@ -39,7 +35,7 @@ use vecmath::{
 /// EnvelopeEditor is made up of. This is used to
 /// specify which element is Highlighted or Clicked
 /// when storing State.
-#[deriving(Show, PartialEq, Clone)]
+#[deriving(Show, PartialEq, Clone, Copy)]
 pub enum Element {
     Rect,
     Pad,
@@ -52,14 +48,14 @@ pub enum Element {
 }
 
 /// An enum to define which button is clicked.
-#[deriving(Show, PartialEq, Clone)]
+#[deriving(Show, PartialEq, Clone, Copy)]
 pub enum MouseButton {
     Left,
     Right,
 }
 
 /// Represents the state of the xy_pad widget.
-#[deriving(Show, PartialEq, Clone)]
+#[deriving(Show, PartialEq, Clone, Copy)]
 pub enum State {
     Normal,
     Highlighted(Element),
@@ -77,7 +73,7 @@ impl State {
     }
 }
 
-widget_fns!(EnvelopeEditor, State, EnvelopeEditor(State::Normal))
+widget_fns!(EnvelopeEditor, State, EnvelopeEditor(State::Normal));
 
 /// `EnvPoint` MUST be implemented for any type that is
 /// contained within the Envelope.
@@ -143,8 +139,8 @@ fn is_over_and_closest(pos: Point,
 /// state and the mouse position.
 fn get_new_state(is_over_elem: Option<Element>,
                  prev: State,
-                 mouse: MouseState) -> State {
-    use mouse_state::MouseButtonState::{Down, Up};
+                 mouse: Mouse) -> State {
+    use mouse::ButtonState::{Down, Up};
     use self::Element::{EnvPoint, CurvePoint};
     use self::MouseButton::{Left, Right};
     use self::State::{Normal, Highlighted, Clicked};
@@ -188,11 +184,9 @@ fn draw_circle(
     radius: f64
 ) {
     let context = &Context::abs(win_w, win_h);
-    let (r, g, b, a) = color.as_tuple();
-    context
-        .ellipse(pos[0], pos[1], radius * 2.0, radius * 2.0)
-        .rgba(r, g, b, a)
-        .draw(graphics)
+    let Color(col) = color;
+    graphics::Ellipse::new(col)
+        .draw([pos[0], pos[1], 2.0 * radius, 2.0 * radius], context, graphics);
 }
 
 
@@ -276,12 +270,12 @@ impl <'a, X: Float + Copy + ToPrimitive + FromPrimitive + PartialOrd + ToString,
     }
 }
 
-impl_callable!(EnvelopeEditorContext, |&mut Vec<E>, uint|:'a, X, Y, E)
-impl_colorable!(EnvelopeEditorContext, X, Y, E)
-impl_frameable!(EnvelopeEditorContext, X, Y, E)
-impl_labelable!(EnvelopeEditorContext, X, Y, E)
-impl_positionable!(EnvelopeEditorContext, X, Y, E)
-impl_shapeable!(EnvelopeEditorContext, X, Y, E)
+impl_callable!(EnvelopeEditorContext, |&mut Vec<E>, uint|:'a, X, Y, E);
+impl_colorable!(EnvelopeEditorContext, X, Y, E);
+impl_frameable!(EnvelopeEditorContext, X, Y, E);
+impl_labelable!(EnvelopeEditorContext, X, Y, E);
+impl_positionable!(EnvelopeEditorContext, X, Y, E);
+impl_shapeable!(EnvelopeEditorContext, X, Y, E);
 
 impl<'a, X: Float + Copy + ToPrimitive + FromPrimitive + PartialOrd + ToString + Show,
          Y: Float + Copy + ToPrimitive + FromPrimitive + PartialOrd + ToString + Show,
@@ -333,14 +327,15 @@ impl<'a, X: Float + Copy + ToPrimitive + FromPrimitive + PartialOrd + ToString +
             let l_w = label::width(self.uic, l_size, l_text);
             let l_pos = [pad_pos[0] + (pad_dim[0] - l_w) / 2.0,
                          pad_pos[1] + (pad_dim[1] - l_size as f64) / 2.0];
-            label::draw(graphics, self.uic, l_pos, l_size, l_color, l_text);
+            self.uic.draw_text(graphics, l_pos, l_size, l_color, l_text);
         };
 
         // Draw the envelope lines.
         match self.env.len() {
             0u | 1u => (),
             _ => {
-                let (r, g, b, a) = color.plain_contrast().as_tuple();
+                let Color(col) = color.plain_contrast();
+                let line = graphics::Line::round(col, 0.5 * self.line_width);
                 for i in range(1u, perc_env.len()) {
                     let (x_a, y_a, _) = perc_env[i - 1u];
                     let (x_b, y_b, _) = perc_env[i];
@@ -349,11 +344,7 @@ impl<'a, X: Float + Copy + ToPrimitive + FromPrimitive + PartialOrd + ToString +
                     let p_b = [map_range(x_b, 0.0, 1.0, pad_pos[0], pad_pos[0] + pad_dim[0]),
                                map_range(y_b, 0.0, 1.0, pad_pos[1] + pad_dim[1], pad_pos[1])];
                     let context = Context::abs(self.uic.win_w, self.uic.win_h);
-                    context
-                        .line(p_a[0], p_a[1], p_b[0], p_b[1])
-                        .round_border_width(self.line_width)
-                        .rgba(r, g, b, a)
-                        .draw(graphics);
+                    line.draw([p_a[0], p_a[1], p_b[0], p_b[1]], &context, graphics);
                 }
             },
         }
@@ -361,10 +352,10 @@ impl<'a, X: Float + Copy + ToPrimitive + FromPrimitive + PartialOrd + ToString +
         // Determine the left and right X bounds for a point.
         let get_x_bounds = |envelope_perc: &Vec<(f32, f32, f32)>, idx: uint| -> (f32, f32) {
             let right_bound = if envelope_perc.len() > 0u && envelope_perc.len() - 1u > idx {
-                (*envelope_perc)[idx + 1u].val0()
+                (*envelope_perc)[idx + 1u].0
             } else { 1.0 };
             let left_bound = if envelope_perc.len() > 0u && idx > 0u {
-                (*envelope_perc)[idx - 1u].val0()
+                (*envelope_perc)[idx - 1u].0
             } else { 0.0 };
             (left_bound, right_bound)
         };
@@ -393,7 +384,7 @@ impl<'a, X: Float + Copy + ToPrimitive + FromPrimitive + PartialOrd + ToString +
                         Corner::BottomLeft => [p_pos[0], p_pos[1] - font_size as f64],
                         Corner::BottomRight => [p_pos[0] - xy_string_w, p_pos[1] - font_size as f64],
                     };
-                    label::draw(graphics, uic, xy_string_pos,
+                    uic.draw_text(graphics, xy_string_pos,
                                 font_size, color.plain_contrast(), xy_string.as_slice());
                     draw_circle(uic.win_w, uic.win_h, graphics,
                                 vec2_sub(p_pos, [pt_radius, pt_radius]),
@@ -403,7 +394,7 @@ impl<'a, X: Float + Copy + ToPrimitive + FromPrimitive + PartialOrd + ToString +
                 match elem {
                     // If a point is clicked, draw that point.
                     Element::EnvPoint(idx, p_pos) => {
-                        let p_pos = [p_pos.val0(), p_pos.val1()];
+                        let p_pos = [p_pos.0, p_pos.1];
                         let pad_x_right = pad_pos[0] + pad_dim[0];
                         let (left_x_bound, right_x_bound) = get_x_bounds(&perc_env, idx);
                         let left_pixel_bound = map_range(left_x_bound, 0.0, 1.0, pad_pos[0], pad_x_right);
@@ -418,7 +409,7 @@ impl<'a, X: Float + Copy + ToPrimitive + FromPrimitive + PartialOrd + ToString +
                         for closest_elem in is_closest_elem.iter() {
                             match *closest_elem {
                                 Element::EnvPoint(closest_idx, closest_env_pt) => {
-                                    let closest_env_pt = [closest_env_pt.val0(), closest_env_pt.val1()];
+                                    let closest_env_pt = [closest_env_pt.0, closest_env_pt.1];
                                     draw_env_pt(self.uic, self.env, closest_idx, closest_env_pt);
                                 },
                                 _ => (),
@@ -559,4 +550,3 @@ impl<'a, X: Float + Copy + ToPrimitive + FromPrimitive + PartialOrd + ToString +
 
     }
 }
-

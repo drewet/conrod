@@ -1,11 +1,7 @@
 
 use color::Color;
 use draw::Drawable;
-use graphics::{
-    AddColor,
-    Context,
-    Draw,
-};
+use graphics;
 use opengl_graphics::Gl;
 use ui_context::UiContext;
 
@@ -29,14 +25,12 @@ impl BackgroundBuilder for UiContext {
     }
 }
 
-impl_colorable!(BackgroundContext)
+impl_colorable!(BackgroundContext);
 
 impl<'a> Drawable for BackgroundContext<'a> {
     fn draw(&mut self, graphics: &mut Gl) {
-        let (r, g, b, a) = self.maybe_color.unwrap_or(self.uic.theme.background_color).as_tuple();
-        Context::abs(self.uic.win_w, self.uic.win_h)
-            .rgba(r, g, b, a)
-            .draw(graphics)
+        let Color(col) = self.maybe_color
+            .unwrap_or(self.uic.theme.background_color);
+        graphics::clear(col, graphics);
     }
 }
-

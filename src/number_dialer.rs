@@ -1,18 +1,16 @@
 use std::num::Float;
 use std::num::Primitive;
+use std::iter::repeat;
 use color::Color;
 use dimensions::Dimensions;
+use graphics;
 use graphics::{
     Context,
-    AddColor,
-    AddRectangle,
-    AddImage,
-    Draw,
     RelativeTransform,
 };
 use label;
 use label::FontSize;
-use mouse_state::MouseState;
+use mouse::Mouse;
 use opengl_graphics::Gl;
 use point::Point;
 use rectangle;
@@ -31,7 +29,7 @@ use widget::Widget::NumberDialer;
 /// NumberDialer is made up of. This is used to
 /// specify which element is Highlighted or Clicked
 /// when storing State.
-#[deriving(Show, PartialEq, Clone)]
+#[deriving(Show, PartialEq, Clone, Copy)]
 pub enum Element {
     Rect,
     LabelGlyphs,
@@ -42,14 +40,14 @@ pub enum Element {
 }
 
 /// Represents the state of the Button widget.
-#[deriving(PartialEq, Clone)]
+#[deriving(PartialEq, Clone, Copy)]
 pub enum State {
     Normal,
     Highlighted(Element),
     Clicked(Element),
 }
 
-widget_fns!(NumberDialer, State, NumberDialer(State::Normal))
+widget_fns!(NumberDialer, State, NumberDialer(State::Normal));
 
 /// Create the string to be drawn from the given values
 /// and precision. Combine this with the label string if
@@ -61,7 +59,7 @@ fn create_val_string<T: ToString>(val: T, len: uint, precision: u8) -> String {
         (None, 0u8) => (),
         (None, _) => {
             val_string.push('.');
-            val_string.grow(precision as uint, '0');
+            val_string.extend(repeat('0').take(precision as uint));
         },
         (Some(idx), 0u8) => {
             val_string.truncate(idx);
@@ -71,7 +69,7 @@ fn create_val_string<T: ToString>(val: T, len: uint, precision: u8) -> String {
             match len.cmp(&desired_len) {
                 Greater => val_string.truncate(desired_len),
                 Equal => (),
-                Less => val_string.grow(desired_len - len, '0'),
+                Less => val_string.extend(repeat('0').take(desired_len - len)),
             }
         },
     }
@@ -79,7 +77,7 @@ fn create_val_string<T: ToString>(val: T, len: uint, precision: u8) -> String {
     // the decimal end of the string is correct, so if the lengths
     // don't match we know we must prepend the difference as '0's.
     match val_string.len().cmp(&len) {
-        Less => format!("{}{}", String::from_char(len - val_string.len(), '0'), val_string),
+        Less => format!("{}{}", repeat('0').take(len - val_string.len()).collect::<String>(), val_string),
         _ => val_string,
     }
 }
@@ -140,8 +138,8 @@ fn is_over(pos: Point,
 #[inline]
 fn get_new_state(is_over_elem: Option<Element>,
                  prev: State,
-                 mouse: MouseState) -> State {
-    use mouse_state::MouseButtonState::{Down, Up};
+                 mouse: Mouse) -> State {
+    use mouse::ButtonState::{Down, Up};
     use self::Element::ValueGlyph;
     use self::State::{Normal, Highlighted, Clicked};
     match (is_over_elem, prev, mouse.left) {
@@ -225,11 +223,12 @@ fn draw_value_string(
     font_color: Color,
     string: &str
 ) {
-    let mut x = 0;
-    let y = 0;
-    let (font_r, font_g, font_b, font_a) = font_color.as_tuple();
+    let mut x = 0.0;
+    let y = 0.0;
+    let Color(font_col) = font_color;
     let context = Context::abs(win_w, win_h).trans(pos[0], pos[1] + size as f64);
     let half_slot_w = slot_w / 2.0;
+    let image = graphics::Image::colored(font_col);
     for (i, ch) in string.chars().enumerate() {
         let character = uic.get_character(size, ch);
         match state {
@@ -255,13 +254,13 @@ fn draw_value_string(
             },
             _ => (),
         };
-        let x_shift = half_slot_w - (character.glyph.advance().x >> 16) as f64 / 2.0;
-        context.trans((x + character.bitmap_glyph.left() + x_shift as i32) as f64,
-                      (y - character.bitmap_glyph.top()) as f64)
-                        .image(&character.texture)
-                        .rgba(font_r, font_g, font_b, font_a)
-                        .draw(graphics);
-        x += slot_w as i32;
+        let x_shift = half_slot_w - 0.5 * character.width();
+        let d = context.trans(
+                x + character.left() + x_shift,
+                y - character.top()
+            );
+        image.draw(&character.texture, &d, graphics);
+        x += slot_w;
     }
 }
 
@@ -274,8 +273,9 @@ fn draw_slot_rect(
     w: f64, h: f64,
     color: Color
 ) {
-    let (r, g, b, a) = color.as_tuple();
-    context.rect(x, y, w, h).rgba(r, g, b, a).draw(graphics)
+    let Color(col) = color;
+    graphics::Rectangle::new(col)
+        .draw([x, y, w, h], context, graphics);
 }
 
 
@@ -330,12 +330,12 @@ NumberDialerBuilder<'a, T> for UiContext {
     }
 }
 
-impl_callable!(NumberDialerContext, |T|:'a, T)
-impl_colorable!(NumberDialerContext, T)
-impl_frameable!(NumberDialerContext, T)
-impl_labelable!(NumberDialerContext, T)
-impl_positionable!(NumberDialerContext, T)
-impl_shapeable!(NumberDialerContext, T)
+impl_callable!(NumberDialerContext, |T|:'a, T);
+impl_colorable!(NumberDialerContext, T);
+impl_frameable!(NumberDialerContext, T);
+impl_labelable!(NumberDialerContext, T);
+impl_positionable!(NumberDialerContext, T);
+impl_shapeable!(NumberDialerContext, T);
 
 impl<'a, T: Float + Copy + Primitive + FromPrimitive + ToPrimitive + ToString>
 ::draw::Drawable for NumberDialerContext<'a, T> {
@@ -383,7 +383,7 @@ impl<'a, T: Float + Copy + Primitive + FromPrimitive + ToPrimitive + ToString>
         // If there's a label, draw it.
         let val_string_color = self.maybe_label_color.unwrap_or(self.uic.theme.label_color);
         if self.maybe_label.is_some() {
-            label::draw(graphics, self.uic, label_pos, font_size, val_string_color, label_string[]);
+            self.uic.draw_text(graphics, label_pos, font_size, val_string_color, label_string[]);
         };
 
         // Determine new value from the initial state and the new state.

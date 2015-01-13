@@ -1,14 +1,15 @@
-
+use std::iter::repeat;
+use Color;
 use dimensions::Dimensions;
-use error::ConrodResult;
 use opengl_graphics::glyph_cache::{
     GlyphCache,
     Character,
 };
+use opengl_graphics::Gl;
 use label::FontSize;
-use mouse_state::{
-    MouseButtonState,
-    MouseState,
+use mouse::{
+    ButtonState,
+    Mouse,
 };
 use input;
 use event::{
@@ -34,7 +35,7 @@ pub type UIID = u64;
 pub struct UiContext {
     data: Vec<(Widget, widget::Placing)>,
     pub theme: Theme,
-    pub mouse: MouseState,
+    pub mouse: Mouse,
     pub keys_just_pressed: Vec<input::keyboard::Key>,
     pub keys_just_released: Vec<input::keyboard::Key>,
     pub text_just_entered: Vec<String>,
@@ -51,16 +52,11 @@ pub struct UiContext {
 impl UiContext {
 
     /// Constructor for a UiContext.
-    pub fn new(font_path: &Path, maybe_theme_path: Option<&str>) -> ConrodResult<UiContext> {
-        let glyph_cache = try!(GlyphCache::new(font_path));
-        let theme = match maybe_theme_path {
-            None => Theme::default(),
-            Some(path) => Theme::load(path).ok().unwrap_or(Theme::default()),
-        };
-        Ok(UiContext {
-            data: Vec::from_elem(512, (widget::Widget::NoWidget, widget::Placing::NoPlace)),
+    pub fn new(glyph_cache: GlyphCache, theme: Theme) -> UiContext {
+        UiContext {
+            data: repeat((widget::Widget::NoWidget, widget::Placing::NoPlace)).take(512).collect(),
             theme: theme,
-            mouse: MouseState::new([0f64, 0f64], MouseButtonState::Up, MouseButtonState::Up, MouseButtonState::Up),
+            mouse: Mouse::new([0f64, 0f64], ButtonState::Up, ButtonState::Up, ButtonState::Up),
             keys_just_pressed: Vec::with_capacity(10u),
             keys_just_released: Vec::with_capacity(10u),
             text_just_entered: Vec::with_capacity(10u),
@@ -69,7 +65,7 @@ impl UiContext {
             win_w: 0f64,
             win_h: 0f64,
             prev_uiid: 0u64,
-        })
+        }
     }
 
     /// Handle game events and update the state.
@@ -87,27 +83,33 @@ impl UiContext {
             self.mouse.pos = [x, y];
         });
         event.press(|button_type| {
+            use input::Button;
+            use input::MouseButton::Left;
+
             match button_type {
-                input::Mouse(button) => {
+                Button::Mouse(button) => {
                     *match button {
-                        input::mouse::Left => &mut self.mouse.left,
+                        Left => &mut self.mouse.left,
                         _/*input::mouse::Right*/ => &mut self.mouse.right,
                         //Middle => &mut self.mouse.middle,
-                    } = MouseButtonState::Down;
+                    } = ButtonState::Down;
                 },
-                input::Keyboard(key) => self.keys_just_pressed.push(key),
+                Button::Keyboard(key) => self.keys_just_pressed.push(key),
             }
         });
         event.release(|button_type| {
+            use input::Button;
+            use input::MouseButton::Left;
+
             match button_type {
-                input::Mouse(button) => {
+                Button::Mouse(button) => {
                     *match button {
-                        input::mouse::Left => &mut self.mouse.left,
+                        Left => &mut self.mouse.left,
                         _/*input::mouse::Right*/ => &mut self.mouse.right,
                         //Middle => &mut self.mouse.middle,
-                    } = MouseButtonState::Up;
+                    } = ButtonState::Up;
                 },
-                input::Keyboard(key) => self.keys_just_released.push(key),
+                Button::Keyboard(key) => self.keys_just_released.push(key),
             }
         });
         event.text(|text| {
@@ -116,7 +118,7 @@ impl UiContext {
     }
 
     /// Return the current mouse state.
-    pub fn get_mouse_state(&self) -> MouseState {
+    pub fn get_mouse_state(&self) -> Mouse {
         self.mouse
     }
 
@@ -151,7 +153,7 @@ impl UiContext {
         } else {
             if ui_id_idx >= self.data.len() {
                 let num_to_push = ui_id_idx - self.data.len();
-                let mut vec = Vec::from_elem(num_to_push, (widget::Widget::NoWidget, widget::Placing::NoPlace));
+                let mut vec: Vec<(widget::Widget, widget::Placing)> = repeat((widget::Widget::NoWidget, widget::Placing::NoPlace)).take(num_to_push).collect();
                 vec.push((default, widget::Placing::NoPlace));
                 self.data.extend(vec.into_iter());
             } else {
@@ -186,12 +188,14 @@ impl UiContext {
 
     /// Return a reference to a `Character` from the GlyphCache.
     pub fn get_character(&mut self, size: FontSize, ch: char) -> &Character {
-        self.glyph_cache.get_character(size, ch)
+        use graphics::character::CharacterCache;
+
+        self.glyph_cache.character(size, ch)
     }
 
     /// Return the width of a 'Character'.
     pub fn get_character_w(&mut self, size: FontSize, ch: char) -> f64 {
-        (self.get_character(size, ch).glyph.advance().x >> 16) as f64
+        self.get_character(size, ch).width()
     }
 
     /// Flush all stored keys.
@@ -199,6 +203,31 @@ impl UiContext {
         self.keys_just_pressed.clear();
         self.keys_just_released.clear();
         self.text_just_entered.clear();
+    }
+
+    /// Draws text
+    pub fn draw_text(
+        &mut self,
+        graphics: &mut Gl,
+        pos: Point,
+        size: FontSize,
+        color: Color,
+        text: &str
+    ) {
+        use graphics::Context;
+        use graphics::text::Text;
+        use graphics::RelativeTransform;
+        use std::num::Float;
+
+        let Color(col) = color;
+        let context = Context::abs(self.win_w, self.win_h)
+                        .trans(pos[0].ceil(), pos[1].ceil() + size as f64);
+        Text::colored(col, size).draw(
+            text,
+            &mut self.glyph_cache,
+            &context,
+            graphics
+        );
     }
 
 }

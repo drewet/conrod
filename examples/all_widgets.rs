@@ -1,6 +1,4 @@
 
-#![feature(if_let)]
-
 extern crate shader_version;
 extern crate event;
 extern crate conrod;
@@ -8,7 +6,7 @@ extern crate graphics;
 extern crate sdl2_window;
 extern crate opengl_graphics;
 extern crate vecmath;
-extern crate current;
+extern crate quack;
 
 use conrod::{
     Background,
@@ -28,18 +26,14 @@ use conrod::{
     Slider,
     Shapeable,
     TextBox,
+    Theme,
     Toggle,
     UiContext,
     WidgetMatrix,
     XYPad,
 };
-use graphics::{
-    AddColor,
-    AddEllipse,
-    Context,
-    Draw,
-};
 use opengl_graphics::Gl;
+use opengl_graphics::glyph_cache::GlyphCache;
 use event::{
     WindowSettings,
     Events,
@@ -50,7 +44,7 @@ use event::{
 use sdl2_window::Sdl2Window;
 use vecmath::vec2_add;
 use std::cell::RefCell;
-use current::Set;
+use quack::Set;
 
 /// This struct holds all of the variables used to demonstrate
 /// application data being passed through the widgets. If some
@@ -127,10 +121,9 @@ impl DemoApp {
 }
 
 fn main() {
-
-    // Create a SDL2 window.
+    let opengl = shader_version::OpenGL::_3_2;
     let window = Sdl2Window::new(
-        shader_version::opengl::OpenGL_3_2,
+        opengl,
         WindowSettings {
             title: "Hello Conrod".to_string(),
             size: [1180, 580],
@@ -140,24 +133,26 @@ fn main() {
         }
     );
     let window_ref = RefCell::new(window);
-    // Create GameIterator to begin the event iteration loop.
     let mut event_iter = Events::new(&window_ref).set(Ups(180)).set(MaxFps(60));
-    // Create OpenGL instance.
-    let mut gl = Gl::new(shader_version::opengl::OpenGL_3_2);
-    // Create the UiContext and specify the name of a font that's in our "assets" directory.
-    let mut uic = UiContext::new(&Path::new("./assets/Dense-Regular.otf"), None).unwrap();
-    // Create the Demonstration Application data.
+    let mut gl = Gl::new(opengl);
+
+    let font_path = Path::new("./assets/Dense-Regular.otf");
+    let theme = Theme::default();
+    let glyph_cache = GlyphCache::new(&font_path).unwrap();
+    let mut uic = UiContext::new(glyph_cache, theme);
     let mut demo = DemoApp::new();
 
-    // Main program loop begins.
     for event in event_iter {
         uic.handle_event(&event);
         match event {
-            Event::Render(_) => draw_ui(&mut gl, &mut uic, &mut demo),
+            Event::Render(args) => {
+                gl.draw([0, 0, args.width as i32, args.height as i32], |_, gl| {
+                    draw_ui(gl, &mut uic, &mut demo);
+                });
+            }
             _ => {}
         };
     }
-
 }
 
 /// Draw the User Interface.
@@ -427,10 +422,8 @@ fn draw_circle(win_w: f64,
                gl: &mut Gl,
                pos: Point,
                color: Color) {
-    let context = &Context::abs(win_w, win_h);
-    let (r, g, b, a) = color.as_tuple();
-    context
-        .ellipse(pos[0], pos[1], 30.0, 30.0)
-        .rgba(r, g, b, a)
-        .draw(gl)
+    let context = &graphics::Context::abs(win_w, win_h);
+    let Color(col) = color;
+    graphics::Ellipse::new(col)
+        .draw([pos[0], pos[1], 30.0, 30.0], context, gl);
 }
