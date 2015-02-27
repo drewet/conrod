@@ -1,8 +1,10 @@
-
+use piston::quack::{ Pair, Set, SetAt };
+use graphics::BackEnd;
+use graphics::character::CharacterCache;
 use color::Color;
-use opengl_graphics::Gl;
 use point::Point;
 use ui_context::UiContext;
+use Position;
 
 pub type FontSize = u32;
 
@@ -14,7 +16,7 @@ pub enum Labeling<'a> {
 
 /// Determine the pixel width of the final text bitmap.
 #[inline]
-pub fn width(uic: &mut UiContext, size: FontSize, text: &str) -> f64 {
+pub fn width<C: CharacterCache>(uic: &mut UiContext<C>, size: FontSize, text: &str) -> f64 {
     text.chars().fold(0u32, |a, ch| {
         let character = uic.get_character(size, ch);
         a + character.width() as u32
@@ -34,43 +36,79 @@ pub trait Labelable<'a> {
     fn label_color(self, color: Color) -> Self;
     fn label_rgba(self, r: f32, g: f32, b: f32, a: f32) -> Self;
     fn label_font_size(self, size: FontSize) -> Self;
-    fn small_font(self) -> Self;
-    fn medium_font(self) -> Self;
-    fn large_font(self) -> Self;
+    fn small_font<C>(self, uic: &UiContext<C>) -> Self;
+    fn medium_font<C>(self, uic: &UiContext<C>) -> Self;
+    fn large_font<C>(self, uic: &UiContext<C>) -> Self;
+}
+
+/// Label text property.
+#[derive(Copy)]
+pub struct LabelText<'a>(pub &'a str);
+
+/// Label color property.
+#[derive(Copy)]
+pub struct LabelColor(pub Color);
+
+/// Label font size property.
+#[derive(Copy)]
+pub struct LabelFontSize(pub FontSize);
+
+impl<'a, T: 'a> Labelable<'a> for T
+    where
+        (LabelText<'a>, T): Pair<Data = LabelText<'a>, Object = T> + SetAt,
+        (LabelColor, T): Pair<Data = LabelColor, Object = T> + SetAt,
+        (LabelFontSize, T): Pair<Data = LabelFontSize, Object = T> + SetAt
+{
+    fn label(self, text: &'a str) -> Self {
+        self.set(LabelText(text))
+    }
+
+    fn label_color(self, color: Color) -> Self {
+        self.set(LabelColor(color))
+    }
+
+    fn label_rgba(self, r: f32, g: f32, b: f32, a: f32) -> Self {
+        self.set(LabelColor(Color([r, g, b, a])))
+    }
+
+    fn label_font_size(self, size: FontSize) -> Self {
+        self.set(LabelFontSize(size))
+    }
+
+    fn small_font<C>(self, uic: &UiContext<C>) -> Self {
+        self.set(LabelFontSize(uic.theme.font_size_small))
+    }
+
+    fn medium_font<C>(self, uic: &UiContext<C>) -> Self {
+        self.set(LabelFontSize(uic.theme.font_size_medium))
+    }
+
+    fn large_font<C>(self, uic: &UiContext<C>) -> Self {
+        self.set(LabelFontSize(uic.theme.font_size_large))
+    }
 }
 
 
-
-
-
-
 /// A context on which the builder pattern can be implemented.
-pub struct LabelContext<'a> {
-    uic: &'a mut UiContext,
+pub struct Label<'a> {
     text: &'a str,
     pos: Point,
     size: FontSize,
     maybe_color: Option<Color>,
 }
 
-impl<'a> LabelContext<'a> {
+impl<'a> Label<'a> {
     /// A builder method for specifying font_size.
-    pub fn size(self, size: FontSize) -> LabelContext<'a> {
-        LabelContext { size: size, ..self }
+    pub fn size(self, size: FontSize) -> Label<'a> {
+        Label { size: size, ..self }
     }
 }
 
-pub trait LabelBuilder<'a> {
-    /// A label builder method to be implemented on the UiContext.
-    fn label(&'a mut self, text: &'a str) -> LabelContext<'a>;
-}
-
-impl<'a> LabelBuilder<'a> for UiContext {
+impl<'a> Label<'a> {
 
     /// A label builder method to be implemented on the UiContext.
-    fn label(&'a mut self, text: &'a str) -> LabelContext<'a> {
-        LabelContext {
-            uic: self,
+    pub fn new(text: &'a str) -> Label<'a> {
+        Label {
             text: text,
             pos: [0.0, 0.0],
             size: 24u32,
@@ -80,12 +118,22 @@ impl<'a> LabelBuilder<'a> for UiContext {
 
 }
 
-impl_colorable!(LabelContext);
-impl_positionable!(LabelContext);
+quack! {
+    label: Label['a]
+    get:
+    set:
+        fn (val: Color) [] { label.maybe_color = Some(val) }
+        fn (val: Position) [] { label.pos = val.0 }
+    action:
+}
 
-impl<'a> ::draw::Drawable for LabelContext<'a> {
-    fn draw(&mut self, graphics: &mut Gl) {
+impl<'a> ::draw::Drawable for Label<'a> {
+    fn draw<B, C>(&mut self, uic: &mut UiContext<C>, graphics: &mut B)
+        where
+            B: BackEnd<Texture = <C as CharacterCache>::Texture>,
+            C: CharacterCache
+    {
         let color = self.maybe_color.unwrap_or(Color::black());
-        self.uic.draw_text(graphics, self.pos, self.size, color, self.text);
+        uic.draw_text(graphics, self.pos, self.size, color, self.text);
     }
 }

@@ -1,46 +1,42 @@
 [package]
 
 name = "conrod"
-version = "0.0.0"
+version = "0.0.5"
 authors = [
     "Mitchell Nordine <mitchell.nordine@gmail.com>",
     "Sven Nilsen <bvssvni@gmail.com>"
 ]
+keywords = ["ui", "widgets", "immediate-mode", "piston"]
+description = "An easy-to-use, immediate-mode, 2D GUI library"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/pistondevelopers/conrod.git"
+homepage = "https://github.com/pistondevelopers/conrod"
 
 [lib]
 
 name = "conrod"
 path = "./src/lib.rs"
 
-[dependencies.pistoncore-input]
-
-git = "https://github.com/PistonDevelopers/input/"
-
-[dependencies.pistoncore-event]
-
-git = "https://github.com/PistonDevelopers/event"
+[dependencies.piston]
+git = "https://github.com/PistonDevelopers/piston/"
 
 [dependencies.piston2d-graphics]
-
 git = "https://github.com/PistonDevelopers/graphics.git"
 
-[dependencies.piston2d-opengl_graphics]
-
-git = "https://github.com/PistonDevelopers/opengl_graphics.git"
-
-[dependencies.freetype-rs]
-
-git = "https://github.com/PistonDevelopers/freetype-rs.git"
-
-[dependencies.rustc-serialize]
-
-version = "*"
-
 [dependencies.vecmath]
-
 git = "https://github.com/PistonDevelopers/vecmath.git"
 
-[dev-dependencies.pistoncore-sdl2_window]
+[dev-dependencies.pistoncore-glutin_window]
+git = "https://github.com/PistonDevelopers/glutin_window.git"
 
-git = "https://github.com/PistonDevelopers/sdl2_window.git"
+[dev-dependencies.piston2d-opengl_graphics]
+git = "https://github.com/PistonDevelopers/opengl_graphics.git"
 
+[dependencies.clock_ticks]
+git = "https://github.com/tomaka/clock_ticks"
+
+[dependencies]
+bitflags = "0.1"
+rand = "0.1.2"
+rustc-serialize = "*"

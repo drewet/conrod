@@ -1,5 +1,8 @@
+use std::cmp::Ordering::{self, Less, Equal, Greater};
 use std::num::Float;
 use std::num::Int;
+use std::num::ToPrimitive;
+use std::num::FromPrimitive;
 
 /// Clamp a value between a given min and max.
 pub fn clamp<T: Float + PartialOrd>(n: T, min: T, max: T) -> T {
@@ -51,7 +54,7 @@ pub fn map_range<X: Float + Copy + FromPrimitive + ToPrimitive,
 
 /// Get a suitable string from the value, its max and the pixel range.
 pub fn val_to_string<T: ToString + ToPrimitive>
-(val: T, max: T, val_rng: T, pixel_range: uint) -> String {
+(val: T, max: T, val_rng: T, pixel_range: usize) -> String {
     let mut s = val.to_string();
     let decimal = s.as_slice().chars().position(|ch| ch == '.');
     match decimal {
@@ -61,24 +64,24 @@ pub fn val_to_string<T: ToString + ToPrimitive>
             // what power of ten both the max and range are.
             let val_rng_f = val_rng.to_f64().unwrap();
             let max_f = max.to_f64().unwrap();
-            let mut n = 0f64;
-            let mut pow_ten = 0f64;
+            let mut n: f64 = 0.0;
+            let mut pow_ten = 0.0;
             while pow_ten < val_rng_f || pow_ten < max_f {
-                pow_ten = (10f64).powf(n);
+                pow_ten = (10.0).powf(n);
                 n += 1.0
             }
-            let min_string_len = n as uint + 1u;
+            let min_string_len = n as usize + 1;
 
             // Find out how many pixels there are to actually use
             // and judge a reasonable precision from this.
-            let mut n = 1u;
-            while 10u.pow(n) < pixel_range { n += 1u }
+            let mut n: usize = 1;
+            while 10.pow(n) < pixel_range { n += 1 }
             let precision = n;
 
             // Truncate the length to the pixel precision as
             // long as this doesn't cause it to be smaller
             // than the necessary decimal place.
-            let mut truncate_len = min_string_len + (precision - 1u);
+            let mut truncate_len = min_string_len + (precision - 1);
             if idx + precision < truncate_len { truncate_len = idx + precision }
             if s.len() > truncate_len { s.truncate(truncate_len) }
             s

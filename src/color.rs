@@ -1,7 +1,10 @@
+
+use piston::quack::{ Pair, Set, SetAt };
+use rand::random;
 use std::num::Float;
 use std::default::Default;
-use std::fmt::{Show, Formatter, Error};
-use std::rand::random;
+use std::fmt::{Debug, Formatter, Error};
+use std::ops::{Add, Sub, Mul, Div};
 use std::ascii::AsciiExt;
 use rustc_serialize::hex::ToHex;
 use rustc_serialize::{
@@ -13,8 +16,8 @@ use utils::clampf32;
 
 /// A basic color struct for general color use
 /// made of red, green, blue and alpha elements.
-#[deriving(Copy)]
-pub struct Color(pub [f32, ..4]);
+#[derive(Copy)]
+pub struct Color(pub [f32; 4]);
 
 impl Color {
 
@@ -47,28 +50,28 @@ impl Color {
     /// Sets the red component of the color.
     #[inline(always)]
     pub fn set_r(&mut self, r: f32) {
-        let &Color(ref mut c) = self;
+        let &mut Color(ref mut c) = self;
         c[0] = r;
     }
 
     /// Sets the green component of the color.
     #[inline(always)]
     pub fn set_g(&mut self, g: f32) {
-        let &Color(ref mut c) = self;
+        let &mut Color(ref mut c) = self;
         c[1] = g;
     }
 
     /// Sets the blue component of the color.
     #[inline(always)]
     pub fn set_b(&mut self, b: f32) {
-        let &Color(ref mut c) = self;
+        let &mut Color(ref mut c) = self;
         c[2] = b;
     }
 
     /// Sets the alpha component of the color.
     #[inline(always)]
     pub fn set_a(&mut self, a: f32) {
-        let &Color(ref mut c) = self;
+        let &mut Color(ref mut c) = self;
         c[3] = a;
     }
 
@@ -89,17 +92,12 @@ impl Color {
         Color([1f32, 1f32, 1f32, 1f32])
     }
 
-    /// Return color as a vector.
-    pub fn as_vec(&self) -> Vec<f32> {
-        vec![self.r(), self.g(), self.b(), self.a()]
-    }
-
     /// Clamp the Color's values between 0f32 and 1f32.
     fn clamp(c: Color) -> Color {
         Color([
-            clampf32(c.r()), 
-            clampf32(c.g()), 
-            clampf32(c.b()), 
+            clampf32(c.r()),
+            clampf32(c.g()),
+            clampf32(c.b()),
             clampf32(c.a())
         ])
     }
@@ -184,13 +182,13 @@ impl Color {
 
     /// Return an array of the channels in this color
     /// clamped to [0..255]
-    pub fn to_32_bit(&self) -> [u8, ..4] {
+    pub fn to_32_bit(&self) -> [u8; 4] {
         [
             to_8_bit(self.r()),
             to_8_bit(self.g()),
             to_8_bit(self.b()),
             to_8_bit(self.a()),
-        ]       
+        ]
     }
 
     /// Return the hex representation of this color
@@ -222,67 +220,71 @@ impl Default for Color {
     }
 }
 
-impl Add<Color, Color> for Color {
+impl Add<Color> for Color {
+    type Output = Color;
     fn add(self, rhs: Color) -> Color {
         Color::clamp(
             Color([
-                self.r() + rhs.r(), 
-                self.g() + rhs.g(), 
-                self.b() + rhs.b(), 
+                self.r() + rhs.r(),
+                self.g() + rhs.g(),
+                self.b() + rhs.b(),
                 self.a()
             ])
         )
     }
 }
 
-impl Sub<Color, Color> for Color {
+impl Sub<Color> for Color {
+    type Output = Color;
     fn sub(self, rhs: Color) -> Color {
         Color::clamp(
             Color([
-                self.r() - rhs.r(), 
-                self.g() - rhs.g(), 
-                self.b() - rhs.b(), 
+                self.r() - rhs.r(),
+                self.g() - rhs.g(),
+                self.b() - rhs.b(),
                 self.a()
             ])
         )
     }
 }
 
-impl Div<Color, Color> for Color {
+impl Div<Color> for Color {
+    type Output = Color;
     fn div(self, rhs: Color) -> Color {
         Color::clamp(
             Color([
-                self.r() / rhs.r(), 
-                self.g() / rhs.g(), 
-                self.b() / rhs.b(), 
+                self.r() / rhs.r(),
+                self.g() / rhs.g(),
+                self.b() / rhs.b(),
                 self.a() / rhs.a(),
             ])
         )
     }
 }
 
-impl Mul<Color, Color> for Color {
+impl Mul<Color> for Color {
+    type Output = Color;
     fn mul(self, rhs: Color) -> Color {
         Color::clamp(
             Color([
-                self.r() * rhs.r(), 
-                self.g() * rhs.g(), 
-                self.b() * rhs.b(), 
+                self.r() * rhs.r(),
+                self.g() * rhs.g(),
+                self.b() * rhs.b(),
                 self.a() * rhs.a(),
             ])
         )
     }
 }
 
-impl Show for Color {
+impl Debug for Color {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), Error> {
-        let hex = self.to_hex(); 
+        let hex = self.to_hex();
         fmt.pad(hex.as_slice())
     }
 }
 
-impl<E, D: Decoder<E>> Decodable<D, E> for Color {
-    fn decode(dec: &mut D) -> Result<Color, E> {
+impl Decodable for Color {
+    fn decode<D: Decoder>(dec: &mut D) -> Result<Color, D::Error> {
         let vec = try!(dec.read_to_vec(|le_dec| le_dec.read_f32()));
 
         if vec.len() != 4 {
@@ -295,8 +297,8 @@ impl<E, D: Decoder<E>> Decodable<D, E> for Color {
     }
 }
 
-impl<E, S: Encoder<E>> Encodable<S, E> for Color {
-    fn encode(&self, enc: &mut S) -> Result<(), E> {
+impl Encodable for Color {
+    fn encode<S: Encoder>(&self, enc: &mut S) -> Result<(), S::Error> {
         let Color(ref vec) = *self;
 
         enc.emit_from_vec(vec, |le_enc, elt| le_enc.emit_f32(*elt))
@@ -308,4 +310,14 @@ pub trait Colorable {
     fn color(self, color: Color) -> Self;
     /// A method used for passing color as rgba.
     fn rgba(self, r: f32, g: f32, b: f32, a: f32) -> Self;
+}
+
+impl<T> Colorable for T
+    where
+        (Color, T): Pair<Data = Color, Object = T> + SetAt
+{
+    fn color(self, color: Color) -> Self { self.set(color) }
+    fn rgba(self, r: f32, g: f32, b: f32, a: f32) -> Self {
+        self.set(Color([r, g, b, a]))
+    }
 }

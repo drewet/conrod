@@ -1,17 +1,20 @@
+use std::cmp::Ordering;
 use std::num::Float;
-use std::num::Primitive;
+use std::num::ToPrimitive;
+use std::num::FromPrimitive;
 use std::iter::repeat;
 use color::Color;
 use dimensions::Dimensions;
 use graphics;
 use graphics::{
+    BackEnd,
     Context,
     RelativeTransform,
 };
+use graphics::character::CharacterCache;
 use label;
 use label::FontSize;
 use mouse::Mouse;
-use opengl_graphics::Gl;
 use point::Point;
 use rectangle;
 use utils::{
@@ -19,57 +22,66 @@ use utils::{
     compare_f64s,
 };
 use ui_context::{
+    Id,
     UIID,
     UiContext,
 };
 use vecmath::vec2_add;
-use widget::Widget::NumberDialer;
+use widget::{ DefaultWidgetState, Widget };
+use Callback;
+use FrameColor;
+use FrameWidth;
+use LabelText;
+use LabelColor;
+use LabelFontSize;
+use Position;
+use Size;
 
 /// Represents the specific elements that the
 /// NumberDialer is made up of. This is used to
 /// specify which element is Highlighted or Clicked
 /// when storing State.
-#[deriving(Show, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Element {
     Rect,
     LabelGlyphs,
-    /// Represents a value glyph slot at `uint` index
+    /// Represents a value glyph slot at `usize` index
     /// as well as the last mouse.pos.y for comparison
     /// in determining new value.
-    ValueGlyph(uint, f64)
+    ValueGlyph(usize, f64)
 }
 
 /// Represents the state of the Button widget.
-#[deriving(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum State {
     Normal,
     Highlighted(Element),
     Clicked(Element),
 }
 
-widget_fns!(NumberDialer, State, NumberDialer(State::Normal));
+widget_fns!(NumberDialer, State, Widget::NumberDialer(State::Normal));
 
 /// Create the string to be drawn from the given values
 /// and precision. Combine this with the label string if
 /// one is given.
-fn create_val_string<T: ToString>(val: T, len: uint, precision: u8) -> String {
+fn create_val_string<T: ToString>(val: T, len: usize, precision: u8) -> String {
     let mut val_string = val.to_string();
     // First check we have the correct number of decimal places.
     match (val_string.as_slice().chars().position(|ch| ch == '.'), precision) {
-        (None, 0u8) => (),
+        (None, 0) => (),
         (None, _) => {
             val_string.push('.');
-            val_string.extend(repeat('0').take(precision as uint));
+            val_string.extend(repeat('0').take(precision as usize));
         },
-        (Some(idx), 0u8) => {
+        (Some(idx), 0) => {
             val_string.truncate(idx);
         },
         (Some(idx), _) => {
-            let (len, desired_len) = (val_string.len(), idx + precision as uint + 1u);
+            let (len, desired_len) = (val_string.len(), idx + precision as usize + 1);
             match len.cmp(&desired_len) {
-                Greater => val_string.truncate(desired_len),
-                Equal => (),
-                Less => val_string.extend(repeat('0').take(desired_len - len)),
+                Ordering::Greater => val_string.truncate(desired_len),
+                Ordering::Equal => (),
+                Ordering::Less => val_string.extend(repeat('0').take(desired_len - len)),
             }
         },
     }
@@ -77,7 +89,7 @@ fn create_val_string<T: ToString>(val: T, len: uint, precision: u8) -> String {
     // the decimal end of the string is correct, so if the lengths
     // don't match we know we must prepend the difference as '0's.
     match val_string.len().cmp(&len) {
-        Less => format!("{}{}", repeat('0').take(len - val_string.len()).collect::<String>(), val_string),
+        Ordering::Less => format!("{}{}", repeat('0').take(len - val_string.len()).collect::<String>(), val_string),
         _ => val_string,
     }
 }
@@ -104,7 +116,7 @@ fn is_over(pos: Point,
            label_dim: Dimensions,
            val_string_w: f64,
            val_string_h: f64,
-           val_string_len: uint) -> Option<Element> {
+           val_string_len: usize) -> Option<Element> {
     match rectangle::is_over(pos, mouse_pos, dim) {
         false => None,
         true => {
@@ -119,7 +131,7 @@ fn is_over(pos: Point,
                         true => {
                             let slot_w = value_glyph_slot_width(val_string_h as u32);
                             let mut slot_pos = slot_rect_pos;
-                            for i in range(0u, val_string_len) {
+                            for i in range(0, val_string_len) {
                                 if rectangle::is_over(slot_pos, mouse_pos, [slot_w, dim[1]]) {
                                     return Some(Element::ValueGlyph(i, mouse_pos[1]))
                                 }
@@ -136,9 +148,7 @@ fn is_over(pos: Point,
 
 /// Check and return the current state of the NumberDialer.
 #[inline]
-fn get_new_state(is_over_elem: Option<Element>,
-                 prev: State,
-                 mouse: Mouse) -> State {
+fn get_new_state(is_over_elem: Option<Element>, prev: State, mouse: Mouse) -> State {
     use mouse::ButtonState::{Down, Up};
     use self::Element::ValueGlyph;
     use self::State::{Normal, Highlighted, Clicked};
@@ -164,10 +174,12 @@ fn get_new_state(is_over_elem: Option<Element>,
 
 /// Return the new value along with it's String representation.
 #[inline]
-fn get_new_value<T: Float + Copy + Primitive + FromPrimitive + ToPrimitive + ToString>
-(val: T, min: T, max: T, idx: uint, y_ord: Ordering, val_string: &String) -> T {
+fn get_new_value<T>(val: T, min: T, max: T, idx: usize, y_ord: Ordering, val_string: &String) -> T
+    where
+        T: Float + FromPrimitive + ToPrimitive + ToString
+{
     match y_ord {
-        Equal => val,
+        Ordering::Equal => val,
         _ => {
             let decimal_pos = val_string.as_slice().chars().position(|ch| ch == '.');
             let val_f = val.to_f64().unwrap();
@@ -175,19 +187,19 @@ fn get_new_value<T: Float + Copy + Primitive + FromPrimitive + ToPrimitive + ToS
             let max_f = max.to_f64().unwrap();
             let new_val_f = match decimal_pos {
                 None => {
-                    let power = val_string.len() - idx - 1u;
+                    let power = val_string.len() - idx - 1;
                     match y_ord {
-                        Less => clamp(val_f + (10f32).powf(power as f32) as f64, min_f, max_f),
-                        Greater => clamp(val_f - (10f32).powf(power as f32) as f64, min_f, max_f),
+                        Ordering::Less => clamp(val_f + (10.0).powf(power as f32) as f64, min_f, max_f),
+                        Ordering::Greater => clamp(val_f - (10.0).powf(power as f32) as f64, min_f, max_f),
                         _ => val_f,
                     }
                 },
                 Some(dec_idx) => {
-                    let mut power = dec_idx as int - idx as int - 1;
+                    let mut power = dec_idx as isize - idx as isize - 1;
                     if power < -1 { power += 1; }
                     match y_ord {
-                        Less => clamp(val_f + (10f32).powf(power as f32) as f64, min_f, max_f),
-                        Greater => clamp(val_f - (10f32).powf(power as f32) as f64, min_f, max_f),
+                        Ordering::Less => clamp(val_f + (10.0).powf(power as f32) as f64, min_f, max_f),
+                        Ordering::Greater => clamp(val_f - (10.0).powf(power as f32) as f64, min_f, max_f),
                         _ => val_f,
                     }
                 },
@@ -198,21 +210,13 @@ fn get_new_value<T: Float + Copy + Primitive + FromPrimitive + ToPrimitive + ToS
 
 }
 
-/*
-/// Return a suitable font size for the given pad height.
-fn get_font_size(pad_height: f64) -> FontSize {
-    clamp(if pad_height % 2.0 == 0.0 { pad_height - 4.0 }
-          else { pad_height - 5.0 }, 4.0, 256.0) as FontSize
-}
-*/
-
 /// Draw the value string glyphs.
 #[inline]
-fn draw_value_string(
+fn draw_value_string<B, C: CharacterCache>(
     win_w: f64,
     win_h: f64,
-    graphics: &mut Gl,
-    uic: &mut UiContext,
+    graphics: &mut B,
+    uic: &mut UiContext<C>,
     state: State,
     slot_y: f64,
     rect_color: Color,
@@ -222,9 +226,13 @@ fn draw_value_string(
     size: FontSize,
     font_color: Color,
     string: &str
-) {
-    let mut x = 0.0;
-    let y = 0.0;
+)
+    where
+        B: BackEnd<Texture = <C as CharacterCache>::Texture>,
+        C: CharacterCache
+{
+    let mut x = 0.0f64;
+    let y = 0.0f64;
     let Color(font_col) = font_color;
     let context = Context::abs(win_w, win_h).trans(pos[0], pos[1] + size as f64);
     let half_slot_w = slot_w / 2.0;
@@ -247,7 +255,7 @@ fn draw_value_string(
                     let context_slot_y = slot_y - (pos[1] + size as f64);
                     let rect_color = if idx == i { rect_color.clicked() }
                                      else { rect_color };
-                    draw_slot_rect(graphics, &context, x as f64, context_slot_y,
+                    draw_slot_rect(graphics, &context, x, context_slot_y,
                                    size as f64, pad_h, rect_color);
                 },
                 _ => (),
@@ -266,8 +274,8 @@ fn draw_value_string(
 
 /// Draw the slot behind the value.
 #[inline]
-fn draw_slot_rect(
-    graphics: &mut Gl,
+fn draw_slot_rect<B: BackEnd>(
+    graphics: &mut B,
     context: &Context,
     x: f64, y: f64,
     w: f64, h: f64,
@@ -280,8 +288,7 @@ fn draw_slot_rect(
 
 
 /// A context on which the builder pattern can be implemented.
-pub struct NumberDialerContext<'a, T> {
-    uic: &'a mut UiContext,
+pub struct NumberDialer<'a, T, F> {
     ui_id: UIID,
     value: T,
     min: T,
@@ -295,23 +302,13 @@ pub struct NumberDialerContext<'a, T> {
     maybe_label: Option<&'a str>,
     maybe_label_color: Option<Color>,
     maybe_label_font_size: Option<u32>,
-    maybe_callback: Option<|T|:'a>,
+    maybe_callback: Option<F>,
 }
 
-pub trait NumberDialerBuilder
-<'a, T: Float + Copy + Primitive + FromPrimitive + ToPrimitive + ToString> {
+impl<'a, T: Float, F> NumberDialer<'a, T, F> {
     /// A number_dialer builder method to be implemented by the UiContext.
-    fn number_dialer(&'a mut self, ui_id: UIID, value: T, min: T, max: T,
-                     precision: u8) -> NumberDialerContext<'a, T>;
-}
-
-impl<'a, T: Float + Copy + Primitive + FromPrimitive + ToPrimitive + ToString>
-NumberDialerBuilder<'a, T> for UiContext {
-    /// A number_dialer builder method to be implemented by the UiContext.
-    fn number_dialer(&'a mut self, ui_id: UIID, value: T, min: T, max: T,
-                     precision: u8) -> NumberDialerContext<'a, T> {
-        NumberDialerContext {
-            uic: self,
+    pub fn new(ui_id: UIID, value: T, min: T, max: T, precision: u8) -> NumberDialer<'a, T, F> {
+        NumberDialer {
             ui_id: ui_id,
             value: clamp(value, min, max),
             min: min,
@@ -330,41 +327,64 @@ NumberDialerBuilder<'a, T> for UiContext {
     }
 }
 
-impl_callable!(NumberDialerContext, |T|:'a, T);
-impl_colorable!(NumberDialerContext, T);
-impl_frameable!(NumberDialerContext, T);
-impl_labelable!(NumberDialerContext, T);
-impl_positionable!(NumberDialerContext, T);
-impl_shapeable!(NumberDialerContext, T);
+quack! {
+    nd: NumberDialer['a, T, F]
+    get:
+        fn () -> Size [] { Size(nd.dim) }
+        fn () -> DefaultWidgetState [] {
+            DefaultWidgetState(Widget::NumberDialer(State::Normal))
+        }
+        fn () -> Id [] { Id(nd.ui_id) }
+    set:
+        fn (val: Color) [] { nd.maybe_color = Some(val) }
+        fn (val: Callback<F>) [where F: FnMut(T) + 'a] {
+            nd.maybe_callback = Some(val.0)
+        }
+        fn (val: FrameColor) [] { nd.maybe_frame_color = Some(val.0) }
+        fn (val: FrameWidth) [] { nd.maybe_frame = Some(val.0) }
+        fn (val: LabelText<'a>) [] { nd.maybe_label = Some(val.0) }
+        fn (val: LabelColor) [] { nd.maybe_label_color = Some(val.0) }
+        fn (val: LabelFontSize) [] { nd.maybe_label_font_size = Some(val.0) }
+        fn (val: Position) [] { nd.pos = val.0 }
+        fn (val: Size) [] { nd.dim = val.0 }
+    action:
+}
 
-impl<'a, T: Float + Copy + Primitive + FromPrimitive + ToPrimitive + ToString>
-::draw::Drawable for NumberDialerContext<'a, T> {
+impl<'a, T, F> ::draw::Drawable for NumberDialer<'a, T, F>
+    where
+        T: Float + FromPrimitive + ToPrimitive + ToString,
+        F: FnMut(T) + 'a
+{
     #[inline]
     /// Draw the number_dialer. When successfully pressed,
     /// or if the value is changed, the given `callback`
     /// function will be called.
-    fn draw(&mut self, graphics: &mut Gl) {
+    fn draw<B, C>(&mut self, uic: &mut UiContext<C>, graphics: &mut B)
+        where
+            B: BackEnd<Texture = <C as CharacterCache>::Texture>,
+            C: CharacterCache
+    {
 
-        let state = *get_state(self.uic, self.ui_id);
-        let mouse = self.uic.get_mouse_state();
-        let frame_w = self.maybe_frame.unwrap_or(self.uic.theme.frame_width);
+        let state = *get_state(uic, self.ui_id);
+        let mouse = uic.get_mouse_state();
+        let frame_w = self.maybe_frame.unwrap_or(uic.theme.frame_width);
         let frame_w2 = frame_w * 2.0;
         let maybe_frame = match frame_w > 0.0 {
-            true => Some((frame_w, self.maybe_frame_color.unwrap_or(self.uic.theme.frame_color))),
+            true => Some((frame_w, self.maybe_frame_color.unwrap_or(uic.theme.frame_color))),
             false => None,
         };
         let pad_h = self.dim[1] - frame_w2;
-        let font_size = self.maybe_label_font_size.unwrap_or(self.uic.theme.font_size_medium);
+        let font_size = self.maybe_label_font_size.unwrap_or(uic.theme.font_size_medium);
         let label_string = match self.maybe_label {
             Some(text) => format!("{}: ", text),
             None => String::new(),
         };
         let label_dim = match label_string.len() {
-            0u => [0.0, 0.0],
-            _ => [label::width(self.uic, font_size, label_string[]), font_size as f64],
+            0 => [0.0, 0.0],
+            _ => [label::width(uic, font_size, &label_string), font_size as f64],
         };
-        let val_string_len = self.max.to_string().len() + if self.precision == 0 { 0u }
-                                                          else { 1u + self.precision as uint };
+        let val_string_len = self.max.to_string().len() + if self.precision == 0 { 0 }
+                                                          else { 1 + self.precision as usize };
         let mut val_string = create_val_string(self.value, val_string_len, self.precision);
         let (val_string_w, val_string_h) = (val_string_width(font_size, &val_string), font_size as f64);
         let label_x = self.pos[0] + (self.dim[0] - (label_dim[0] + val_string_w)) / 2.0;
@@ -374,16 +394,16 @@ impl<'a, T: Float + Copy + Primitive + FromPrimitive + ToPrimitive + ToString>
                                    label_pos, label_dim, val_string_w, val_string_h,
                                    val_string.len());
         let new_state = get_new_state(is_over_elem, state, mouse);
-        let color = self.maybe_color.unwrap_or(self.uic.theme.shape_color);
+        let color = self.maybe_color.unwrap_or(uic.theme.shape_color);
 
         // Draw the widget rectangle.
-        rectangle::draw(self.uic.win_w, self.uic.win_h, graphics, rectangle::State::Normal,
+        rectangle::draw(uic.win_w, uic.win_h, graphics, rectangle::State::Normal,
                         self.pos, self.dim, maybe_frame, color);
 
         // If there's a label, draw it.
-        let val_string_color = self.maybe_label_color.unwrap_or(self.uic.theme.label_color);
+        let val_string_color = self.maybe_label_color.unwrap_or(uic.theme.label_color);
         if self.maybe_label.is_some() {
-            self.uic.draw_text(graphics, label_pos, font_size, val_string_color, label_string[]);
+            uic.draw_text(graphics, label_pos, font_size, val_string_color, &label_string);
         };
 
         // Determine new value from the initial state and the new state.
@@ -405,7 +425,7 @@ impl<'a, T: Float + Copy + Primitive + FromPrimitive + ToPrimitive + ToString>
 
         // Draw the value string.
         let val_string_pos = vec2_add(label_pos, [label_dim[0], 0.0]);
-        draw_value_string(self.uic.win_w, self.uic.win_h, graphics, self.uic, new_state,
+        draw_value_string(uic.win_w, uic.win_h, graphics, uic, new_state,
                           self.pos[1] + frame_w, color,
                           value_glyph_slot_width(font_size), pad_h,
                           val_string_pos,
@@ -425,7 +445,7 @@ impl<'a, T: Float + Copy + Primitive + FromPrimitive + ToPrimitive + ToString>
             }
         }
 
-        set_state(self.uic, self.ui_id, new_state, self.pos, self.dim);
+        set_state(uic, self.ui_id, Widget::NumberDialer(new_state), self.pos, self.dim);
 
     }
 

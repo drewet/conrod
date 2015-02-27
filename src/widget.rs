@@ -10,7 +10,7 @@ use xy_pad;
 
 /// Represents the placement of the widget including
 /// x / y position, width and height.
-#[deriving(Clone, Copy)]
+#[derive(Clone, Copy)]
 pub enum Placing {
     Place(f64, f64, f64, f64), // (x, y, w, h)
     NoPlace,
@@ -45,7 +45,7 @@ impl Placing {
 
 /// Algebraic widget type for storing in ui_context
 /// and for ease of state-matching.
-#[deriving(Copy, Clone)]
+#[derive(Copy, Clone)]
 pub enum Widget {
     NoWidget,
     Button(button::State),
@@ -58,3 +58,23 @@ pub enum Widget {
     XYPad(xy_pad::State),
 }
 
+impl Widget {
+    pub fn matches(&self, other: &Widget) -> bool {
+        match (self, other) {
+            (&Widget::NoWidget, &Widget::NoWidget) => true,
+            (&Widget::Button(_), &Widget::Button(_)) => true,
+            (&Widget::DropDownList(_), &Widget::DropDownList(_)) => true,
+            (&Widget::EnvelopeEditor(_), &Widget::EnvelopeEditor(_)) => true,
+            (&Widget::NumberDialer(_), &Widget::NumberDialer(_)) => true,
+            (&Widget::Slider(_), &Widget::Slider(_)) => true,
+            (&Widget::TextBox(_), &Widget::TextBox(_)) => true,
+            (&Widget::Toggle(_), &Widget::Toggle(_)) => true,
+            (&Widget::XYPad(_), &Widget::XYPad(_)) => true,
+            _ => false
+        }
+    }
+}
+
+/// Default widget state property.
+#[derive(Copy)]
+pub struct DefaultWidgetState(pub Widget);

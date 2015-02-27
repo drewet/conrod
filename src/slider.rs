@@ -1,12 +1,16 @@
 use std::num::Float;
+use std::num::ToPrimitive;
+use std::num::FromPrimitive;
 use color::Color;
 use dimensions::Dimensions;
 use label;
 use mouse::Mouse;
-use opengl_graphics::Gl;
+use graphics::BackEnd;
+use graphics::character::CharacterCache;
 use point::Point;
 use rectangle;
 use ui_context::{
+    Id,
     UIID,
     UiContext,
 };
@@ -15,11 +19,19 @@ use utils::{
     percentage,
     value_from_perc,
 };
-use widget::Widget::Slider;
+use widget::{ DefaultWidgetState, Widget };
 use vecmath::vec2_add;
+use Callback;
+use FrameColor;
+use FrameWidth;
+use LabelText;
+use LabelColor;
+use LabelFontSize;
+use Position;
+use Size;
 
 /// Represents the state of the Button widget.
-#[deriving(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum State {
     Normal,
     Highlighted,
@@ -37,7 +49,7 @@ impl State {
     }
 }
 
-widget_fns!(Slider, State, Slider(State::Normal));
+widget_fns!(Slider, State, Widget::Slider(State::Normal));
 
 /// Check the current state of the slider.
 fn get_new_state(is_over: bool,
@@ -55,15 +67,14 @@ fn get_new_state(is_over: bool,
 }
 
 /// A context on which the builder pattern can be implemented.
-pub struct SliderContext<'a, T> {
-    uic: &'a mut UiContext,
+pub struct Slider<'a, T, F> {
     ui_id: UIID,
     value: T,
     min: T,
     max: T,
     pos: Point,
     dim: Dimensions,
-    maybe_callback: Option<|T|:'a>,
+    maybe_callback: Option<F>,
     maybe_color: Option<Color>,
     maybe_frame: Option<f64>,
     maybe_frame_color: Option<Color>,
@@ -72,19 +83,10 @@ pub struct SliderContext<'a, T> {
     maybe_label_font_size: Option<u32>,
 }
 
-pub trait SliderBuilder<'a, T: Float + Copy + FromPrimitive + ToPrimitive> {
-    /// A slider builder method to be implemented by the UiContext.
-    fn slider(&'a mut self, ui_id: UIID,
-              value: T, min: T, max: T) -> SliderContext<'a, T>;
-}
-
-impl<'a, T: Float + Copy + FromPrimitive + ToPrimitive>
-SliderBuilder<'a, T> for UiContext {
+impl<'a, T, F> Slider<'a, T, F> {
     /// A button builder method to be implemented by the UiContext.
-    fn slider(&'a mut self, ui_id: UIID,
-              value: T, min: T, max: T) -> SliderContext<'a, T> {
-        SliderContext {
-            uic: self,
+    pub fn new(ui_id: UIID, value: T, min: T, max: T) -> Slider<'a, T, F> {
+        Slider {
             ui_id: ui_id,
             value: value,
             min: min,
@@ -102,25 +104,49 @@ SliderBuilder<'a, T> for UiContext {
     }
 }
 
-impl_callable!(SliderContext, |T|:'a, T);
-impl_colorable!(SliderContext, T);
-impl_frameable!(SliderContext, T);
-impl_labelable!(SliderContext, T);
-impl_positionable!(SliderContext, T);
-impl_shapeable!(SliderContext, T);
+quack! {
+    slider: Slider['a, T, F]
+    get:
+        fn () -> Size [] { Size(slider.dim) }
+        fn () -> DefaultWidgetState [] {
+            DefaultWidgetState(Widget::Slider(State::Normal))
+        }
+        fn () -> Id [] { Id(slider.ui_id) }
+    set:
+        fn (val: Color) [] { slider.maybe_color = Some(val) }
+        fn (val: Callback<F>) [where F: FnMut(T) + 'a] {
+            slider.maybe_callback = Some(val.0)
+        }
+        fn (val: FrameColor) [] { slider.maybe_frame_color = Some(val.0) }
+        fn (val: FrameWidth) [] { slider.maybe_frame = Some(val.0) }
+        fn (val: LabelText<'a>) [] { slider.maybe_label = Some(val.0) }
+        fn (val: LabelColor) [] { slider.maybe_label_color = Some(val.0) }
+        fn (val: LabelFontSize) [] { slider.maybe_label_font_size = Some(val.0) }
+        fn (val: Position) [] { slider.pos = val.0 }
+        fn (val: Size) [] { slider.dim = val.0 }
+    action:
+}
 
-impl<'a, T: Float + Copy + FromPrimitive + ToPrimitive>
-::draw::Drawable for SliderContext<'a, T> {
-    fn draw(&mut self, graphics: &mut Gl) {
+impl<'a, T, F> ::draw::Drawable for Slider<'a, T, F>
+    where
+        T: Float + FromPrimitive + ToPrimitive,
+        F: FnMut(T) + 'a
+{
 
-        let state = *get_state(self.uic, self.ui_id);
-        let mouse = self.uic.get_mouse_state();
+    fn draw<B, C>(&mut self, uic: &mut UiContext<C>, graphics: &mut B)
+        where
+            B: BackEnd<Texture = <C as CharacterCache>::Texture>,
+            C: CharacterCache
+    {
+
+        let state = *get_state(uic, self.ui_id);
+        let mouse = uic.get_mouse_state();
         let is_over = rectangle::is_over(self.pos, mouse.pos, self.dim);
         let new_state = get_new_state(is_over, state, mouse);
 
-        let frame_w = self.maybe_frame.unwrap_or(self.uic.theme.frame_width);
+        let frame_w = self.maybe_frame.unwrap_or(uic.theme.frame_width);
         let frame_w2 = frame_w * 2.0;
-        let frame_color = self.maybe_frame_color.unwrap_or(self.uic.theme.frame_color);
+        let frame_color = self.maybe_frame_color.unwrap_or(uic.theme.frame_color);
 
         let is_horizontal = self.dim[0] > self.dim[1];
         let (new_value, pad_pos, pad_dim) = if is_horizontal {
@@ -169,35 +195,35 @@ impl<'a, T: Float + Copy + FromPrimitive + ToPrimitive>
 
         // Draw.
         let rect_state = new_state.as_rectangle_state();
-        let color = self.maybe_color.unwrap_or(self.uic.theme.shape_color);
+        let color = self.maybe_color.unwrap_or(uic.theme.shape_color);
 
         // Rectangle frame / backdrop.
-        rectangle::draw(self.uic.win_w, self.uic.win_h, graphics, rect_state,
+        rectangle::draw(uic.win_w, uic.win_h, graphics, rect_state,
                         self.pos, self.dim, None, frame_color);
         // Slider rectangle.
-        rectangle::draw(self.uic.win_w, self.uic.win_h, graphics, rect_state,
+        rectangle::draw(uic.win_w, uic.win_h, graphics, rect_state,
                         pad_pos, pad_dim, None, color);
 
         // If there's a label, draw it.
         if let Some(text) = self.maybe_label {
-            let text_color = self.maybe_label_color.unwrap_or(self.uic.theme.label_color);
-            let size = self.maybe_label_font_size.unwrap_or(self.uic.theme.font_size_medium);
+            let text_color = self.maybe_label_color.unwrap_or(uic.theme.label_color);
+            let size = self.maybe_label_font_size.unwrap_or(uic.theme.font_size_medium);
             let is_horizontal = self.dim[0] > self.dim[1];
             let l_pos = if is_horizontal {
                 let x = pad_pos[0] + (pad_dim[1] - size as f64) / 2.0;
                 let y = pad_pos[1] + (pad_dim[1] - size as f64) / 2.0;
                 [x, y]
             } else {
-                let label_w = label::width(self.uic, size, text.as_slice());
+                let label_w = label::width(uic, size, text.as_slice());
                 let x = pad_pos[0] + (pad_dim[0] - label_w) / 2.0;
                 let y = pad_pos[1] + pad_dim[1] - pad_dim[0] - frame_w;
                 [x, y]
             };
             // Draw the label.
-            self.uic.draw_text(graphics, l_pos, size, text_color, text.as_slice());
+            uic.draw_text(graphics, l_pos, size, text_color, text.as_slice());
         }
 
-        set_state(self.uic, self.ui_id, new_state, self.pos, self.dim);
+        set_state(uic, self.ui_id, Widget::Slider(new_state), self.pos, self.dim);
 
     }
 }

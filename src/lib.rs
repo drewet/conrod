@@ -1,42 +1,42 @@
 
-#![feature(macro_rules, phase, slicing_syntax)]
 #![deny(missing_copy_implementations)]
+#![feature(core, collections, old_io, old_path)]
 
-extern crate input;
-extern crate event;
-extern crate freetype;
+#[macro_use] extern crate bitflags;
+extern crate clock_ticks;
 extern crate graphics;
-extern crate opengl_graphics;
+#[macro_use] extern crate piston;
+extern crate rand;
 extern crate "rustc-serialize" as rustc_serialize;
-extern crate time;
 extern crate vecmath;
 
-pub use background::BackgroundBuilder as Background;
-pub use button::ButtonBuilder as Button;
-pub use drop_down_list::DropDownListBuilder as DropDownList;
-pub use envelope_editor::EnvelopeEditorBuilder as EnvelopeEditor;
+pub use background::Background;
+pub use button::Button;
+pub use drop_down_list::DropDownList;
+pub use envelope_editor::EnvelopeEditor;
 pub use envelope_editor::EnvelopePoint;
-pub use label::LabelBuilder as Label;
-pub use number_dialer::NumberDialerBuilder as NumberDialer;
-pub use slider::SliderBuilder as Slider;
-pub use text_box::TextBoxBuilder as TextBox;
-pub use toggle::ToggleBuilder as Toggle;
-pub use widget_matrix::WidgetMatrixBuilder as WidgetMatrix;
-pub use xy_pad::XYPadBuilder as XYPad;
+pub use label::Label;
+pub use number_dialer::NumberDialer;
+pub use slider::Slider;
+pub use text_box::TextBox;
+pub use toggle::Toggle;
+pub use widget_matrix::WidgetMatrix;
+pub use xy_pad::XYPad;
 
-pub use callback::Callable;
+pub use callback::{ Callable, Callback };
 pub use color::{Color, Colorable};
 pub use dimensions::Dimensions;
 pub use draw::Drawable;
-pub use frame::{Framing, Frameable};
-pub use label::Labelable;
+pub use frame::{Framing, Frameable, FrameColor, FrameWidth};
+pub use label::{Labelable, LabelText, LabelColor, LabelFontSize};
 pub use point::Point;
-pub use position::Positionable;
-pub use shape::Shapeable;
+pub use position::{Positionable, Position};
+pub use shape::{Shapeable, Size};
 pub use theme::Theme;
 pub use ui_context::UiContext;
 pub use widget::Widget;
 
+#[macro_use]
 pub mod macros;
 
 pub mod background;

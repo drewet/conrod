@@ -3,14 +3,16 @@ use color::Color;
 use rustc_serialize::{
     json,
     Encodable,
-    Decodable
+    Decodable,
 };
-use std::io::File;
+use std::error::Error;
+use std::old_io::File;
 use std::str;
+use std::borrow::ToOwned;
 use ui_context::UiContext;
 
 /// A data holder for style-related data.
-#[deriving(Show, Clone, RustcEncodable, RustcDecodable)]
+#[derive(Debug, Clone, RustcEncodable, RustcDecodable)]
 pub struct Theme {
     pub name: String,
     pub background_color: Color,
@@ -36,9 +38,9 @@ impl Theme {
             frame_color: Color::new(0.0, 0.0, 0.0, 1.0),
             frame_width: 1.0,
             label_color: Color::new(0.0, 0.0, 0.0, 1.0),
-            font_size_large: 32,
-            font_size_medium: 24,
-            font_size_small: 18,
+            font_size_large: 26,
+            font_size_medium: 18,
+            font_size_small: 12,
         }
     }
 
@@ -54,7 +56,7 @@ impl Theme {
         let theme = match decoder {
             Some(ref mut d) => match Decodable::decode(d) {
                 Ok(lib) => Ok(lib),
-                Err(e) => Err(format!("Failed to load Theme correctly: {}", e)),
+                Err(e) => Err(format!("Failed to load Theme correctly: {}", e.description())),
             },
             None => Err(String::from_str("Failed to load Theme correctly")),
         };
@@ -63,9 +65,12 @@ impl Theme {
 
     /// Save a theme to file.
     pub fn save(&self, path: &str) -> Result<(), String> {
-        let json_string = json::Encoder::buffer_encode(self);
+        let json_string = match json::encode(self) {
+                Ok(x) => x,
+                Err(e) => return Err(e.description().to_owned())
+            };
         let mut file = File::create(&Path::new(path));
-        match file.write(json_string.as_slice()) {
+        match file.write_all(json_string.as_bytes()) {
             Ok(()) => Ok(()),
             Err(e) => Err(format!("Theme failed to save correctly: {}", e)),
         }
@@ -75,10 +80,9 @@ impl Theme {
 
 
 /// A trait to make it easier to generically access the UIC on different widget contexts.
-pub trait Themeable {
+pub trait Themeable<C> {
     /// Return a reference to the UiContext.
-    fn get_theme(&self) -> &UiContext;
+    fn get_theme(&self) -> &UiContext<C>;
     /// Return a reference to the UiContext.
-    fn get_theme_mut(&mut self) -> &mut UiContext;
+    fn get_theme_mut(&mut self) -> &mut UiContext<C>;
 }
-
